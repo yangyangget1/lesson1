@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>读音挑战</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>
+body{
+  margin:0;
+  font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  background:#f5f7fa;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:20px;
+  color:#333;
+  min-height:100vh;
+  box-sizing:border-box;
+}
+h1{font-size:28px;margin:20px 0 15px;}
+h2{font-size:24px;margin:0 0 20px;text-align:center;}
+h3{font-size:22px;margin:0 0 15px;text-align:center;color:#007aff;}
+#setup,#game,#rank{
+  width:100%;
+  max-width:400px;
+  background:#fff;
+  border-radius:16px;
+  padding:25px;
+  box-shadow:0 6px 24px rgba(0,0,0,.1);
+  margin-bottom:20px;
+  box-sizing:border-box;
+}
+#game{display:none;text-align:center;}
+#char{
+  font-size:90px;
+  font-weight:bold;
+  margin:30px 0;
+  color:#007aff;
+  height:120px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+#timer{
+  font-size:24px;
+  color:#e60012;
+  margin-bottom:20px;
+  font-weight:500;
+}
+button{
+  padding:15px 28px;
+  border:none;
+  border-radius:12px;
+  background:#007aff;
+  color:#fff;
+  font-size:18px;
+  cursor:pointer;
+  width:100%;
+  margin-top:15px;
+  transition:background 0.3s;
+}
+button:disabled{
+  background:#ccc;
+  cursor:not-allowed;
+}
+button:active{background:#0066cc;}
+#userName{
+  width:100%;
+  padding:12px 15px;
+  border:1px solid #e0e0e0;
+  border-radius:8px;
+  font-size:16px;
+  margin-top:5px;
+  box-sizing:border-box;
+}
+#wordList{
+  width:100%;
+  padding:12px 15px;
+  border:1px solid #e0e0e0;
+  border-radius:8px;
+  font-size:16px;
+  margin-top:5px;
+  resize:none;
+  box-sizing:border-box;
+}
+label{
+  display:block;
+  font-size:16px;
+  margin-bottom:15px;
+}
+#msg{
+  margin-top:20px;
+  color:#666;
+  font-size:18px;
+  min-height:24px;
+}
+#rank{display:none;margin-top:20px;}
+#rankList{
+  padding-left:20px;
+  margin:0;
+}
+#rankList li{
+  display:flex;
+  justify-content:space-between;
+  padding:10px 0;
+  font-size:16px;
+  border-bottom:1px solid #f0f0f0;
+}
+#rankList li:last-child{border-bottom:none;}
+</style>
+</head>
+<body>
+<!-- 1. 配置页 -->
+<div id="setup">
+  <h2>读音挑战</h2>
+  <label>挑战者姓名：<input id="userName" placeholder="输入名字"></label>
+  <div style="margin-top:10px">字表（用逗号分隔）：</div>
+  <textarea id="wordList" rows="3" style="width:100%">龙,虎,雪,雨,花,鸟,风,月,云,山</textarea>
+  <button onclick="startGame()">开始挑战</button>
+</div>
+<!-- 2. 游戏页 -->
+<div id="game">
+  <div id="timer">15″</div>
+  <div id="char">-</div>
+  <button id="recBtn" onclick="toggleRec()">按住发音</button>
+  <div id="msg" style="margin-top:15px;color:#666"></div>
+</div>
+<!-- 3. 排行榜 -->
+<div id="rank">
+  <h3>排行榜</h3>
+  <ol id="rankList"></ol>
+  <button onclick="location.reload()">再来一局</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.20.0/dist/index.js"></script>
+<script>
+/* ========== 全局变量 ========== */
+const STORAGE_KEY = 'readRank';
+let words = [], index = 0, correct = 0, startTime = 0, timer = null, rec = null, recRunning = false;
+/* ========== 开始游戏 ========== */
+function startGame() {
+  const name = document.getElementById('userName').value.trim();
+  if (!name) return alert('请输入名字');
+  const raw = document.getElementById('wordList').value.trim();
+  words = raw.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  if (!words.length) return alert('字表不能为空');
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('game').style.display = 'block';
+  index = correct = 0;
+  startTime = Date.now();
+  nextWord();
+}
+/* ========== 下一题 ========== */
+function nextWord() {
+  if (index >= words.length) return showRank();
+  document.getElementById('char').textContent = words[index];
+  document.getElementById('msg').textContent = '';
+  let left = 15;
+  const timerEl = document.getElementById('timer');
+  timerEl.textContent = left + '″';
+  clearInterval(timer);
+  timer = setInterval(() => {
+    left--;
+    timerEl.textContent = left + '″';
+    if (left <= 0) {
+      clearInterval(timer);
+      index++;
+      nextWord();
+    }
+  }, 1000);
+}
+/* ========== 语音识别 ========== */
+function toggleRec() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    alert('您的浏览器不支持语音识别，请用手机Chrome、Safari或Edge最新版打开');
+    return;
+  }
+  if (!rec) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    rec = new SR();
+    rec.lang = 'zh-CN';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = e => {
+      const transcript = e.results[0][0].transcript.trim();
+      checkAnswer(transcript);
+    };
+    rec.onerror = e => {
+      console.error(e);
+      recRunning = false;
+      document.getElementById('recBtn').textContent = '按住发音';
+    };
+    rec.onend = () => {
+      recRunning = false;
+      document.getElementById('recBtn').textContent = '按住发音';
+    };
+  }
+  if (!recRunning) {
+    rec.start();
+    recRunning = true;
+    document.getElementById('recBtn').textContent = '识别中…';
+  } else {
+    rec.stop();
+  }
+}
+/* ========== 判断对错 ========== */
+function checkAnswer(spoken) {
+  const target = words[index];
+  const pyTarget = pinyinPro.pinyin(target, { toneType: 'none' }).toLowerCase();
+  const pySpoken = pinyinPro.pinyin(spoken.replace(/[^\u4e00-\u9fa5]/g, ''), { toneType: 'none' }).toLowerCase();
+  if (pySpoken.includes(pyTarget) || pyTarget.includes(pySpoken)) {
+    correct++;
+    document.getElementById('msg').textContent = '✅ 正确！';
+    clearInterval(timer);
+    index++;
+    setTimeout(nextWord, 600);
+  } else {
+    document.getElementById('msg').textContent = '❌ 识别：' + spoken;
+  }
+}
+/* ========== 排行榜 ========== */
+function showRank() {
+  const used = Math.ceil((Date.now() - startTime) / 1000);
+  const name = document.getElementById('userName').value.trim();
+  const record = { name, correct, total: words.length, used, date: new Date().toLocaleString('zh-CN') };
+  let list = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  list.push(record);
+  list.sort((a, b) => (b.correct / b.total - a.correct / a.total) || (a.used - b.used));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  document.getElementById('game').style.display = 'none';
+  document.getElementById('rank').style.display = 'block';
+  const ul = document.getElementById('rankList');
+  ul.innerHTML = '';
+  list.slice(0, 10).forEach(r => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${r.name}</span><span>${r.correct}/${r.total} · ${r.used}秒`;
+    ul.appendChild(li);
+  });
+}
+</script>
+</body>
+</html>
